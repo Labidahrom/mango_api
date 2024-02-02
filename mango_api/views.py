@@ -9,7 +9,22 @@ from mango_api.api import (
     test_call_history
     )
 
+from django.shortcuts import render
+from django.contrib.auth.views import LoginView, LogoutView
+from django.urls import reverse_lazy
+from django.contrib.auth.forms import AuthenticationForm
+
 
 def index(request):
-    get_call_history_from_the_last_date_in_db()
-    return HttpResponse("все функции выполнились")
+    return render(request, 'index.html')
+
+
+class LoginUser(LoginView):
+    template_name = 'login_user.html'
+    next_page = reverse_lazy('index')
+    form_class = AuthenticationForm
+
+
+class LogoutUser(LogoutView):
+    template_name = 'index.html'
+    next_page = reverse_lazy('index')
