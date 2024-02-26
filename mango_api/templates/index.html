@@ -1,12 +1,30 @@
 {% extends "base.html" %}
 {% block content %}
  {% if user.is_authenticated %}
-<h1 class="p-3">Генератор текстов на основе ChatGPT</h1>
-<p class="p-3">Для добавления и проверки ваших урл пройдите по ссылкам сверху</p>
-<p class="p-3"><a href="{}">Сгенерировать тексты по списку</a></p>
-<p class="p-3"><a href="{}">Результаты генерации</a></p>
+<h1 class="p-3">Панель управления Манго</h1>
+
+<p class="p-3">Время последней записи в истории звонков {{ last_call_history_entry_date }}</p>
+<li class="nav-item">
+  <form action="{% url 'fetch_two_days' %}" method="post">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-link nav-link">Закачать историю c последнего дня</button>
+</form>
+<li class="nav-item">
+  <form action="{% url 'fetch_week' %}" method="post">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-link nav-link">Закачать историю за последнюю неделю</button>
+</form>
+<li class="nav-item">
+  <form action="{}" method="post">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-link nav-link">Закачать историю за последний месяц</button>
+</form>
+<li class="nav-item">
+  <form action="{}" method="post">
+    {% csrf_token %}
+    <button type="submit" class="btn btn-link nav-link">Закачать историю за последний год</button>
+</form>
 {% else %}
-<h1 class="p-3">Генератор текстов на основе ChatGPT</h1>
-<p class="p-3">Для доступа к функциям необходимо авторизоваться</p>
+<p class="p-3">Вы не авторизовались</p>
   {% endif %}
 {% endblock %}

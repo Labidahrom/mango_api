@@ -2,7 +2,6 @@ from django.db import models
 
 
 class CallHistoryGolangVersion(models.Model):
-    id = models.BigAutoField(primary_key=True)
     entry_id = models.CharField(max_length=50)
     napravlenie = models.CharField(max_length=50)
     data_postupil = models.DateField(null=True)

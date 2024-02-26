@@ -1,9 +1,12 @@
-from datetime import datetime
+from celery import shared_task
+from datetime import date, datetime
 from datetime import timedelta
 from dateutil.rrule import rrule, DAILY
 from dotenv import load_dotenv
 import json
 from hashlib import sha256
+import logging
+from logging.handlers import RotatingFileHandler
 from mango_api import models
 import os
 import pytz
@@ -14,18 +17,42 @@ load_dotenv()
 vpbx_api_key = os.getenv("MANGO_KEY")
 vpbx_api_sign = os.getenv("MANGO_SALT")
 
+logger = logging.getLogger(__name__)
 
-def create_dates_sequence():
-    """
-    Dividing the time gap between last day in a CallHistoryGolangVersion and preset date into dates
-    """
+
+def get_last_call_history_entry_date():
     latest_database_date = models.CallHistoryGolangVersion.objects.order_by('-data_postupil').first()
     if latest_database_date:
-        start_date = latest_database_date.data_postupil
-    else:
-        start_date = datetime.now().date() - timedelta(days=1)
-    end_date = datetime.now()
-    return [date.strftime("%d.%m.%Y") for date in rrule(DAILY, dtstart=start_date, until=end_date)]
+        return latest_database_date.data_postupil
+
+
+def get_last_call_history_entry_datetime():
+    latest_database_datetime = models.CallHistoryGolangVersion.objects.order_by('-date_time_postupil').first()
+    if latest_database_datetime:
+        return latest_database_datetime.date_time_postupil
+
+
+def get_utc_time():
+    return datetime.utcnow().replace(tzinfo=pytz.utc)
+
+
+def convert_utc_to_moskow_time(utc_time):
+    moscow_tz = pytz.timezone('Europe/Moscow')
+    return utc_time.astimezone(moscow_tz)
+                
+
+def convert_time_to_string(time):
+    return time.strftime("%H:%M:%S")
+
+
+def prepare_time_seconds_gap(seconds):
+    moskow_time_now = convert_utc_to_moskow_time(get_utc_time())
+    moskow_time_ago = moskow_time_now - timedelta(seconds=seconds)
+    return (
+        convert_time_to_string(moskow_time_ago),
+        convert_time_to_string(moskow_time_now)
+    )
+
 
 
 def convert_unix_to_moscow_time(unix_time):
@@ -73,10 +100,7 @@ def get_call_history_id(date_from, date_to):
                  f'"limit":"5000", '
                  f'"offset":"0"}}')
 
-    print("json_data:", json_data)
     response_content = fetch_mango_api_data(json_data, "https://app.mango-office.ru/vpbx/stats/calls/request/")
-    print("response_content", response_content)
-    print("key:", response_content.get("key"))
     return response_content.get("key")
 
 
@@ -111,6 +135,8 @@ def save_data_to_group_golang_version():
         "{}",
         "https://app.mango-office.ru/vpbx/groups"
     )
+    if not json_response:
+        return
     groups = json_response.get("groups")
     existing_ids = set(models.GroupGolangVersion.objects.filter(
         id__in=[group.get("id") for group in groups]
@@ -130,6 +156,8 @@ def save_data_to_distribution_schema_golang_version():
         "{}",
         "https://app.mango-office.ru/vpbx/schemas"
     )
+    if not json_response:
+        return
     schemas = json_response.get("data")
     existing_ids = set(models.DistributionSchemaGolangVersion.objects.values_list('id', flat=True))
     new_entries = [
@@ -148,6 +176,8 @@ def save_data_to_operator_golang_version():
         f'{{"ext_fields":["groups"]}}',
         "https://app.mango-office.ru/vpbx/config/users/request"
     )
+    if not json_response:
+        return
     operators = json_response.get("users")
     existing_ids = set(models.OperatorGolangVersion.objects.values_list('id', flat=True))
     new_entries = [
@@ -166,6 +196,8 @@ def save_data_to_phone_golang_version():
         "{}",
         "https://app.mango-office.ru/vpbx/incominglines"
     )
+    if not json_response:
+        return
     phones = json_response.get("lines")
     existing_numbers = set(models.PhoneGolangVersion.objects.values_list('number', flat=True))
     new_entries = [
@@ -180,8 +212,11 @@ def save_data_to_phone_golang_version():
 
 
 def save_data_to_call_history_golang_version(json_response):
-    print("json_response:\n", json_response)
-    calls = json_response.get("data")[0].get("list")
+    try:    
+        calls = json_response.get("data")[0].get("list")
+    except IndexError as e:
+        print(f"No data in the request: {e}")
+        return
     moscow_tz = pytz.timezone('Europe/Moscow')
 
     for call in calls:
@@ -247,19 +282,26 @@ def test_call_history():
     print("id:", call_history_id)
     time.sleep(5)
     call_history_response = get_call_history_by_id(call_history_id)
-    print("call_history_response:\n", call_history_response)
     save_data_to_call_history_golang_version(call_history_response)
 
 
-def get_call_history_from_the_last_date_in_db():
-    dates_sequence = create_dates_sequence()
+def create_dates_sequence(start_date):
+    """
+    Dividing the time gap between last day in a CallHistoryGolangVersion and preset date into dates
+    """
+    end_date = datetime.now()
+    return [date.strftime("%d.%m.%Y") for date in rrule(DAILY, dtstart=start_date, until=end_date)]
+
+
+def get_call_history_by_dates(dates_sequence, start_time="00:00:00", end_time="23:59:59"):
     for date in dates_sequence:
+        print(f"Записываем данные за дату {date}")
         date_from = {
-        "time": "00:00:00",
+        "time": start_time,
         "date": date
     }
         date_to = {
-            "time": "23:59:59",
+            "time": end_time,
             "date": date
         }
         call_history_id = get_call_history_id(date_from, date_to)
@@ -270,6 +312,44 @@ def get_call_history_from_the_last_date_in_db():
             else:
                 time.sleep(60)
                 continue
+        logger.info(f"Данные успешно добавлены")
 
-                
+@shared_task
+def get_call_history_by_one_minute():
+    time_70_sec_ago, time_now = prepare_time_seconds_gap(270)
+    dates_sequence = create_dates_sequence(date.today())
+    get_call_history_by_dates(dates_sequence, time_70_sec_ago, time_now)
 
+
+@shared_task
+def get_call_history_from_the_last_date_in_db():
+    start_date = get_last_call_history_entry_date()
+    dates_sequence = create_dates_sequence(start_date)
+    get_call_history_by_dates(dates_sequence)
+
+
+@shared_task
+def get_call_history_from_the_last_week():
+    start_date = datetime.now() - timedelta(days=7)
+    dates_sequence = create_dates_sequence(start_date.date())
+    get_call_history_by_dates(dates_sequence)
+
+
+@shared_task
+def update_tables_except_call_history():
+    save_data_to_group_golang_version()
+    save_data_to_distribution_schema_golang_version()
+    save_data_to_operator_golang_version()
+    save_data_to_phone_golang_version()
+    logger.info(f"Данные успешно добавлены")
+
+
+@shared_task
+def run_database_update_on_app_start():
+    save_data_to_group_golang_version()
+    save_data_to_distribution_schema_golang_version()
+    save_data_to_operator_golang_version()
+    save_data_to_phone_golang_version()
+    get_call_history_from_the_last_date_in_db()
+    logger.info(f"Данные успешно добавлены")
+    logger.error("Test error message")
