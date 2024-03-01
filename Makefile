@@ -1,5 +1,5 @@
 app_start:
-	poetry run python manage.py runserver
+	poetry run gunicorn -w 5 -b 0.0.0.0:8000 mango_api.wsgi:application
 
 celery_start:
 	poetry run celery -A mango_api worker --loglevel=info

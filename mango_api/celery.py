@@ -44,5 +44,3 @@ app.conf.beat_schedule = {
 
 # Schedule the startup task (this ensures it's called when Celery starts)
 run_database_update_on_app_start.apply_async()
-
-

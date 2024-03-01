@@ -6,12 +6,14 @@ from pathlib import Path
 load_dotenv()
 SECRET_KEY = os.getenv("SECRET_KEY")
 BASE_DIR = Path(__file__).resolve().parent.parent
+DATABASE_NAME = os.getenv("DATABASE_NAME")
+DATABASE_USER = os.getenv("DATABASE_USER")
+DATABASE_PASSWORD = os.getenv("DATABASE_PASSWORD")
+DATABASE_HOST = os.getenv("DATABASE_HOST")
+DATABASE_PORT = os.getenv("DATABASE_PORT")
 
-
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
-
-ALLOWED_HOSTS = []
+DEBUG = os.getenv("DEBUG", "True") == "True"
+ALLOWED_HOSTS = ["*"]
 
 
 # Application definition
@@ -93,6 +95,7 @@ LOGGING = {
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -102,6 +105,8 @@ MIDDLEWARE = [
 ]
 
 ROOT_URLCONF = 'mango_api.urls'
+
+STATIC_ROOT = '/home/roman/mango-api/staticfiles'
 
 TEMPLATES = [
     {
@@ -127,8 +132,12 @@ WSGI_APPLICATION = 'mango_api.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': DATABASE_NAME,
+        'USER': DATABASE_USER,
+        'PASSWORD': DATABASE_PASSWORD,
+        'HOST': DATABASE_HOST,
+        'PORT': DATABASE_PORT,
     }
 }
 

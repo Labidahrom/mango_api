@@ -9,4 +9,5 @@ urlpatterns = [
     path('logout/', views.LogoutUser.as_view(), name='logout'),
     path('fetch_two_days/', views.FetchTwoDays.as_view(), name='fetch_two_days'),
     path('fetch_week/', views.FetchWeek.as_view(), name='fetch_week'),
+    path('fetch_month/', views.FetchMonth.as_view(), name='fetch_month'),
 ]

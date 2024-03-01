@@ -4,6 +4,7 @@ from mango_api.api import (
     get_call_history_from_the_last_date_in_db,
     get_last_call_history_entry_datetime,
     get_call_history_from_the_last_week,
+    get_call_history_from_the_last_month,
     save_data_to_group_golang_version,
     save_data_to_distribution_schema_golang_version,
     save_data_to_operator_golang_version,
@@ -50,4 +51,10 @@ class FetchWeek(View):
 
     def post(self, request, *args, **kwargs):
         get_call_history_from_the_last_week.delay()
+        return render(request, 'index.html')
+    
+class FetchMonth(View):
+
+    def post(self, request, *args, **kwargs):
+        get_call_history_from_the_last_month.delay()
         return render(request, 'index.html')

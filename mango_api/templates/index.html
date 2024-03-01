@@ -15,7 +15,7 @@
     <button type="submit" class="btn btn-link nav-link">Закачать историю за последнюю неделю</button>
 </form>
 <li class="nav-item">
-  <form action="{}" method="post">
+  <form action="{% url 'fetch_month' %}" method="post">
     {% csrf_token %}
     <button type="submit" class="btn btn-link nav-link">Закачать историю за последний месяц</button>
 </form>

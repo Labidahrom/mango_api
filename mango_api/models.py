@@ -2,7 +2,7 @@ from django.db import models
 
 
 class CallHistoryGolangVersion(models.Model):
-    entry_id = models.CharField(max_length=50)
+    entry_id = models.CharField(max_length=50, unique=True)
     napravlenie = models.CharField(max_length=50)
     data_postupil = models.DateField(null=True)
     time_postupil = models.TimeField(null=True)
@@ -16,7 +16,7 @@ class CallHistoryGolangVersion(models.Model):
     komment_k_nomeru = models.CharField(max_length=100, null=True)
     data_okonchania_razgovora = models.DateField(null=True)
     time_okonchania_razgovora = models.TimeField(null=True)
-    recording_id = models.CharField(max_length=60, null=True)
+    recording_id = models.CharField(max_length=300, null=True)
 
     class Meta:
         db_table = 'call_history_golang_version'
