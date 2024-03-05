@@ -140,7 +140,7 @@ def get_call_history_by_id(id):
             
             time.sleep(60)
             continue
-    logger.error("Try to get call history by id 5 times, no response")
+    logger.error("Try to get call history by id 5 times, no response or no new calls")
 
 
 def save_data_to_group_golang_version():
@@ -358,7 +358,7 @@ def update_tables_except_call_history():
     save_data_to_phone_golang_version()
 
 
-@shared_task
+@shared_task()
 def run_database_update_on_app_start():
     save_data_to_group_golang_version()
     save_data_to_distribution_schema_golang_version()

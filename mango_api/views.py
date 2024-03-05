@@ -14,6 +14,7 @@ from mango_api.api import (
 
 from django.shortcuts import render
 from django.contrib.auth.views import LoginView, LogoutView
+from django.contrib import messages
 from django.views import View
 from django.urls import reverse_lazy
 from django.contrib.auth.forms import AuthenticationForm
@@ -23,7 +24,6 @@ logger = logging.getLogger(__name__)
 
 
 def index(request):
-    logger.info('This is a direct test from a Django view.')
     last_call_history_entry_date = get_last_call_history_entry_datetime()
     return render(request, 'index.html', {
         'last_call_history_entry_date': last_call_history_entry_date
@@ -45,16 +45,19 @@ class FetchTwoDays(View):
 
     def post(self, request, *args, **kwargs):
         get_call_history_from_the_last_date_in_db.delay()
+        messages.success(request, 'Обновляем данные за 2 дня')
         return render(request, 'index.html')
 
 class FetchWeek(View):
 
     def post(self, request, *args, **kwargs):
         get_call_history_from_the_last_week.delay()
+        messages.success(request, 'Обновляем данные за неделю')
         return render(request, 'index.html')
     
 class FetchMonth(View):
 
     def post(self, request, *args, **kwargs):
         get_call_history_from_the_last_month.delay()
+        messages.success(request, 'Обновляем данные за месяц')
         return render(request, 'index.html')

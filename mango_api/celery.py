@@ -10,7 +10,7 @@ import django
 django.setup()
 
 # Now, it's safe to import Django models and tasks
-from mango_api.api import run_database_update_on_app_start
+# from mango_api.api import run_database_update_on_app_start
 
 app = Celery('mango_api')
 app.config_from_object('django.conf:settings', namespace='CELERY')
@@ -41,6 +41,3 @@ app.conf.beat_schedule = {
         'schedule': timedelta(seconds=600),
     },
 }
-
-# Schedule the startup task (this ensures it's called when Celery starts)
-run_database_update_on_app_start.apply_async()

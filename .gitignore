@@ -6,3 +6,4 @@ dist
 *.sqlite3
 *.log
 *.json
+plan.md
