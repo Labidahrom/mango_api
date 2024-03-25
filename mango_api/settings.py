@@ -16,6 +16,8 @@ DEBUG = os.getenv("DEBUG", "True") == "True"
 ALLOWED_HOSTS = ["*"]
 
 
+DATA_UPLOAD_MAX_NUMBER_FIELDS = 50000
+
 # Application definition
 
 INSTALLED_APPS = [
@@ -132,11 +134,11 @@ WSGI_APPLICATION = 'mango_api.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.postgresql',
+        'ENGINE': 'django.db.backends.mysql',
         'NAME': DATABASE_NAME,
         'USER': DATABASE_USER,
         'PASSWORD': DATABASE_PASSWORD,
-        'HOST': DATABASE_HOST,
+        'HOST': '127.0.0.1',
         'PORT': DATABASE_PORT,
     }
 }

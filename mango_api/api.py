@@ -55,7 +55,6 @@ def prepare_time_seconds_gap(seconds):
     )
 
 
-
 def convert_unix_to_moscow_time(unix_time):
     date_time_utc = datetime.fromtimestamp(unix_time, pytz.utc)
     date_time_moscow = date_time_utc.astimezone(pytz.timezone('Europe/Moscow'))
@@ -131,16 +130,25 @@ def get_call_history_by_id(id):
         response = fetch_mango_api_data(json_data,
                                         "https://app.mango-office.ru/vpbx/stats/calls/result/")
         try:
-            if response and response.get("data"):    
+            if response and response.get("data"):
+                print(f"получили ответ на закачку истории звонков, айди: {json_data}")    
                 calls = response.get("data")[0].get("list")
                 if calls:
                     return response
+            else:
+                print(f"не сработала fetch_mango_api_data, ключ: {id}")
+                time.sleep(60)
+                continue
 
         except (IndexError, TypeError) as e:
-            
             time.sleep(60)
             continue
-    logger.error("Try to get call history by id 5 times, no response or no new calls")
+
+        except Exception as e:
+            logger.error(f"Ошибка при получении данных с манго: {str(e)}")
+            time.sleep(60)
+            continue
+    logger.error(f"Try to get call history by id 5 times, no response or no new calls, ключ: {id}")
 
 
 def save_data_to_group_golang_version():
