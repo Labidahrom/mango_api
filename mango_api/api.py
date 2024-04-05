@@ -119,14 +119,14 @@ def create_napravlenie_field(json_data):
         else:
             napravlenie_data = "Исходящий несостоявшийся"
     else:
-        napravlenie_data = "Внутренний вызов"
+        napravlenie_data = "Исходящий внешний вызов"
 
     return napravlenie_data
 
 
 def get_call_history_by_id(id):
     json_data = f'{{"key":"{id}"}}'
-    for fetch in range(5):
+    for fetch in range(7):
         response = fetch_mango_api_data(json_data,
                                         "https://app.mango-office.ru/vpbx/stats/calls/result/")
         try:
@@ -232,69 +232,150 @@ def save_data_to_phone_golang_version():
     models.PhoneGolangVersion.objects.bulk_create(new_entries)
 
 
+def get_description_by_name(name):
+    try:
+        print(f"name: {name}")
+        description = models.DistributionSchemaGolangVersion.objects.get(name=name).description
+        print(f"description: {description}")
+        return description
+    except:
+        print("нет дискрипшена")
+        return ''
+
+def process_call(call):    
+    moscow_tz = pytz.timezone('Europe/Moscow')
+    call_data = {}
+    call_data['entry_id'] = call.get("entry_id")
+    call_start_time = datetime.fromtimestamp(call.get("context_start_time"), moscow_tz)
+    call_data['data_postupil'] = call_start_time.date() if call_start_time else None
+    call_data['time_postupil'] = call_start_time.time() if call_start_time else None
+
+    context_calls = call.get("context_calls")
+    if context_calls:
+        call_end_time  = datetime.fromtimestamp(context_calls[0].get("call_end_time"), moscow_tz)
+        call_data['data_okonchania_razgovora'] = call_end_time.date() if call_end_time else None
+        call_data['time_okonchania_razgovora'] = call_end_time.time() if call_end_time else None
+        call_data['gruppa'] = get_description_by_name(context_calls[0].get("call_abonent_info"))
+        call_data['recording_id'] = context_calls[0].get("recording_id")
+        members = context_calls[0].get("members")
+        call_data['komu_zvonil'] = members[0].get("call_abonent_info") if members else ''
+        call_data['tel_komu_zvonil'] = members[0].get("call_abonent_number") if members else ''
+    else:
+        call_data['gruppa'] = None
+        call_data['recording_id'] = None
+        call_data['komu_zvonil'] = ''
+        call_data['tel_komu_zvonil'] = ''
+    call_data['napravlenie'] = create_napravlenie_field(call)
+
+    call_data['date_time_postupil'] = call_start_time if call_start_time else None
+    call_data['dlitelnost'] = call.get("duration")
+    call_data['tel_kto_zvonil'] = call.get("caller_number")
+    call_data['kuda_zvonil'] = call.get("called_number")
+    number_name = models.PhoneGolangVersion.objects.filter(number=call.get("called_number")).first()
+    call_data['komment_k_nomeru'] = number_name.comment if number_name else None
+    return call_data
+
+
+def save_call_to_database(call_data):
+    if call_data:
+        try:
+            models.CallHistoryGolangVersion.objects.get_or_create(
+                entry_id=call_data.get('entry_id'),
+                defaults={
+                    'napravlenie': call_data.get('napravlenie'),
+                    'data_postupil': call_data.get('data_postupil'),
+                    'time_postupil': call_data.get('time_postupil'),
+                    'date_time_postupil': call_data.get('date_time_postupil'),
+                    'dlitelnost': call_data.get('dlitelnost'),
+                    'gruppa': call_data.get('gruppa'),
+                    'tel_kto_zvonil': call_data.get('tel_kto_zvonil'),
+                    'komu_zvonil': call_data.get('komu_zvonil'),
+                    'tel_komu_zvonil': call_data.get('tel_komu_zvonil'),
+                    'kuda_zvonil': call_data.get('kuda_zvonil'),
+                    'komment_k_nomeru': call_data.get('komment_k_nomeru'),
+                    'data_okonchania_razgovora': call_data.get('data_okonchania_razgovora'),
+                    'time_okonchania_razgovora': call_data.get('time_okonchania_razgovora'),
+                    'recording_id': call_data.get('recording_id')
+                }
+            )
+        except IntegrityError:
+            logger.info(f"entry_id already exsist in database")
+        except Exception as e:
+            logger.info(f"{e}")
+
+
 def save_data_to_call_history_golang_version(json_response):
     if not json_response:
         return
-    moscow_tz = pytz.timezone('Europe/Moscow')
     calls = json_response.get("data")[0].get("list")
     for call in calls:
-         entry_id = call.get("entry_id")
-         call_start_time = datetime.fromtimestamp(call.get("context_start_time"), moscow_tz)
+        call_data = process_call(call)
+        save_call_to_database(call_data)
 
-         context_calls = call.get("context_calls")
-         if context_calls:
-            call_end_time  = datetime.fromtimestamp(context_calls[0].get("call_end_time"), moscow_tz)
-            gruppa = context_calls[0].get("call_abonent_info")
-            recording_id = context_calls[0].get("recording_id")
-            members = context_calls[0].get("members")
-            if members:
-                komu_zvonil = members[0].get("call_abonent_info")
-                tel_komu_zvonil = members[0].get("call_abonent_number")
-            else:
-                komu_zvonil = ''
-                tel_komu_zvonil = ''
-         else:
-             call_end_time = ''
-             gruppa = None
-             recording_id = None
-             komu_zvonil = ''
-             tel_komu_zvonil = ''
-         napravlenie = create_napravlenie_field(call)
-         data_postupil = call_start_time.date() if call_start_time else None
-         time_postupil = call_start_time.time() if call_start_time else None
-         date_time_postupil = call_start_time if call_start_time else None
-         dlitelnost = call.get("duration")
-         tel_kto_zvonil = call.get("caller_number")
 
-         kuda_zvonil = call.get("called_number")
-         number_name = models.PhoneGolangVersion.objects.filter(number=call.get("called_number")).first()
-         komment_k_nomeru = number_name.comment if number_name else None
-         data_okonchania_razgovora = call_end_time.date() if call_end_time else None
-         time_okonchania_razgovora = call_end_time.time() if call_end_time else None
+# def save_data_to_call_history_golang_version(json_response):
+#     if not json_response:
+#         return
+#     moscow_tz = pytz.timezone('Europe/Moscow')
+#     calls = json_response.get("data")[0].get("list")
+#     for call in calls:
+#         entry_id = call.get("entry_id")
+#         call_start_time = datetime.fromtimestamp(call.get("context_start_time"), moscow_tz)
 
-         try:
-            models.CallHistoryGolangVersion.objects.get_or_create(
-                entry_id=entry_id,
-                defaults={
-                    'napravlenie': napravlenie,
-                    'data_postupil': data_postupil,
-                    'time_postupil': time_postupil,
-                    'date_time_postupil': date_time_postupil,
-                    'dlitelnost': dlitelnost,
-                    'gruppa': gruppa,
-                    'tel_kto_zvonil': tel_kto_zvonil,
-                    'komu_zvonil': komu_zvonil,
-                    'tel_komu_zvonil': tel_komu_zvonil,
-                    'kuda_zvonil': kuda_zvonil,
-                    'komment_k_nomeru': komment_k_nomeru,
-                    'data_okonchania_razgovora': data_okonchania_razgovora,
-                    'time_okonchania_razgovora': time_okonchania_razgovora,
-                    'recording_id': recording_id
-                }
-            )
-         except IntegrityError:
-            logger.info(f"entry_id already exsist in database")
-            continue
+#         context_calls = call.get("context_calls")
+#         if context_calls:
+#             call_end_time  = datetime.fromtimestamp(context_calls[0].get("call_end_time"), moscow_tz)
+#             gruppa = context_calls[0].get("call_abonent_info")
+#             recording_id = context_calls[0].get("recording_id")
+#             members = context_calls[0].get("members")
+#             if members:
+#                 komu_zvonil = members[0].get("call_abonent_info")
+#                 tel_komu_zvonil = members[0].get("call_abonent_number")
+#             else:
+#                 komu_zvonil = ''
+#                 tel_komu_zvonil = ''
+#         else:
+#             call_end_time = ''
+#             gruppa = None
+#             recording_id = None
+#             komu_zvonil = ''
+#             tel_komu_zvonil = ''
+#         napravlenie = create_napravlenie_field(call)
+#         data_postupil = call_start_time.date() if call_start_time else None
+#         time_postupil = call_start_time.time() if call_start_time else None
+#         date_time_postupil = call_start_time if call_start_time else None
+#         dlitelnost = call.get("duration")
+#         tel_kto_zvonil = call.get("caller_number")
+
+#         kuda_zvonil = call.get("called_number")
+#         number_name = models.PhoneGolangVersion.objects.filter(number=call.get("called_number")).first()
+#         komment_k_nomeru = number_name.comment if number_name else None
+#         data_okonchania_razgovora = call_end_time.date() if call_end_time else None
+#         time_okonchania_razgovora = call_end_time.time() if call_end_time else None
+
+#         try:
+#             models.CallHistoryGolangVersion.objects.get_or_create(
+#                 entry_id=entry_id,
+#                 defaults={
+#                     'napravlenie': napravlenie,
+#                     'data_postupil': data_postupil,
+#                     'time_postupil': time_postupil,
+#                     'date_time_postupil': date_time_postupil,
+#                     'dlitelnost': dlitelnost,
+#                     'gruppa': gruppa,
+#                     'tel_kto_zvonil': tel_kto_zvonil,
+#                     'komu_zvonil': komu_zvonil,
+#                     'tel_komu_zvonil': tel_komu_zvonil,
+#                     'kuda_zvonil': kuda_zvonil,
+#                     'komment_k_nomeru': komment_k_nomeru,
+#                     'data_okonchania_razgovora': data_okonchania_razgovora,
+#                     'time_okonchania_razgovora': time_okonchania_razgovora,
+#                     'recording_id': recording_id
+#                 }
+#             )
+#         except IntegrityError:
+#             logger.info(f"entry_id already exsist in database")
+#             continue
             
 
 def test_call_history():
@@ -333,9 +414,9 @@ def get_call_history_by_dates(dates_sequence, start_time="00:00:00", end_time="2
             
 @shared_task
 def get_call_history_by_one_minute():
-    time_70_sec_ago, time_now = prepare_time_seconds_gap(270)
+    time_ago, time_now = prepare_time_seconds_gap(600)
     dates_sequence = create_dates_sequence(date.today())
-    get_call_history_by_dates(dates_sequence, time_70_sec_ago, time_now)
+    get_call_history_by_dates(dates_sequence, time_ago, time_now)
 
 
 @shared_task

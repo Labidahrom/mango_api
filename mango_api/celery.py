@@ -34,7 +34,7 @@ app.conf.ONCE = {
 app.conf.beat_schedule = {
     'update-call-history': {
         'task': 'mango_api.api.get_call_history_by_one_minute',
-        'schedule': timedelta(seconds=60),
+        'schedule': timedelta(seconds=40),
     },
         'update-other-tables': {
         'task': 'mango_api.api.update_tables_except_call_history',

@@ -21,8 +21,8 @@ sleep 5
 echo "Starting database update on app start"
 poetry run python manage.py startup_tasks &
 
-echo "Waiting for 2 minutes before starting Celery Beat..."
-sleep 120
+echo "Waiting for 30 seconds before starting Celery Beat..."
+sleep 30
 
 echo "Starting Celery Beat..."
 poetry run celery -A mango_api beat --loglevel=info
