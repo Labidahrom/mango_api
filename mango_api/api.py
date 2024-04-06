@@ -244,6 +244,13 @@ def get_group_by_operator_name(operator_name):
     except:
         print(f"а с этим оператором не получилось: {operator_name}")
         return ''
+    
+def format_seconds_to_time(seconds):
+    seconds = int(seconds)
+    hours = seconds // 3600
+    minutes = (seconds % 3600) // 60
+    seconds = seconds % 60
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
 
 def process_call(call):    
     moscow_tz = pytz.timezone('Europe/Moscow')
@@ -274,7 +281,7 @@ def process_call(call):
     call_data['napravlenie'] = create_napravlenie_field(call)
 
     call_data['date_time_postupil'] = call_start_time if call_start_time else None
-    call_data['dlitelnost'] = call.get("duration")
+    call_data['dlitelnost'] = format_seconds_to_time(call.get("duration"))
     call_data['tel_kto_zvonil'] = call.get("caller_number")
     call_data['kuda_zvonil'] = call.get("called_number")
     number_name = models.PhoneGolangVersion.objects.filter(number=call.get("called_number")).first()
