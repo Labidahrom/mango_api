@@ -12,3 +12,6 @@ makemigrations:
 
 migrate:
 	poetry run python manage.py migrate
+
+createsuperuser:
+	poetry run python manage.py createsuperuser

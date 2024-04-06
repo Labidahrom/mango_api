@@ -4,6 +4,7 @@ import requests
 from hashlib import sha256
 import os
 import json
+import time
 
 load_dotenv()
 vpbx_api_key = os.getenv("MANGO_KEY")
@@ -39,7 +40,7 @@ def create_napravlenie_field(json_data):
 
 
 def get_call_history_id(date):
-    json_data = f'{{"start_date":"{date} 10:00:00", "end_date":"{date} 15:59:59", "limit":"5000", "offset":"0"}}'
+    json_data = f'{{"start_date":"{date} 13:00:00", "end_date":"{date} 16:59:59", "limit":"5000", "offset":"0"}}'
 
     res = (vpbx_api_key + json_data + vpbx_api_sign).encode('UTF-8')
     sign = sha256(res).hexdigest()
@@ -72,12 +73,15 @@ def get_call_history(key):
     headers = {
         "Content-Type": "application/x-www-form-urlencoded"
     }
-    response = requests.post(url, headers=headers, data=payload)
-    if response.status_code == 200:
-        print('response ok')
-        return response.json()
-    else:
-        print('response error')
+    for i in range(3):
+        response = requests.post(url, headers=headers, data=payload)
+        response_json = response.json()
+        if response_json["status"] == 'complete':
+            print('response ok')
+            return response_json
+        else:
+            print('response error')
+            time.sleep(60)
 
 
 def parse_json(response):
@@ -111,7 +115,7 @@ def parse_json(response):
 
 
 
-date = "30.03.2024"
+date = "06.04.2024"
 id = get_call_history_id(date)
 response_json = get_call_history(id)
 with open('raw_api_response', 'w') as file:

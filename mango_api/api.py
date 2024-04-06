@@ -131,12 +131,10 @@ def get_call_history_by_id(id):
                                         "https://app.mango-office.ru/vpbx/stats/calls/result/")
         try:
             if response and response.get("data"):
-                print(f"получили ответ на закачку истории звонков, айди: {json_data}")    
                 calls = response.get("data")[0].get("list")
                 if calls:
                     return response
             else:
-                print(f"не сработала fetch_mango_api_data, ключ: {id}")
                 time.sleep(60)
                 continue
 
@@ -192,6 +190,12 @@ def save_data_to_distribution_schema_golang_version():
     models.DistributionSchemaGolangVersion.objects.bulk_create(new_entries)
 
 
+def prepare_operator_group_field(groups):
+    if groups and isinstance(groups, list):
+        return groups[0]
+    else:
+        return "0"
+
 def save_data_to_operator_golang_version():
     json_response = fetch_mango_api_data(
         f'{{"ext_fields":["groups"]}}',
@@ -205,7 +209,7 @@ def save_data_to_operator_golang_version():
         models.OperatorGolangVersion(
             id = operator.get("telephony").get("extension"),
             name = operator.get("general").get("name"),
-            group = operator.get("groups")
+            group = prepare_operator_group_field(operator.get("groups"))
         )
         for operator in operators if int(operator.get("telephony").get("extension")) not in existing_ids
     ]
@@ -232,14 +236,13 @@ def save_data_to_phone_golang_version():
     models.PhoneGolangVersion.objects.bulk_create(new_entries)
 
 
-def get_description_by_name(name):
+def get_group_by_operator_name(operator_name):
     try:
-        print(f"name: {name}")
-        description = models.DistributionSchemaGolangVersion.objects.get(name=name).description
-        print(f"description: {description}")
-        return description
+        group_id = models.OperatorGolangVersion.objects.get(name=operator_name).group
+        print(f"и вот это мы запишем в базу: {models.GroupGolangVersion.objects.get(id=group_id)}, оператор {operator_name}")
+        return models.GroupGolangVersion.objects.get(id=group_id)
     except:
-        print("нет дискрипшена")
+        print(f"а с этим оператором не получилось: {operator_name}")
         return ''
 
 def process_call(call):    
@@ -255,10 +258,13 @@ def process_call(call):
         call_end_time  = datetime.fromtimestamp(context_calls[0].get("call_end_time"), moscow_tz)
         call_data['data_okonchania_razgovora'] = call_end_time.date() if call_end_time else None
         call_data['time_okonchania_razgovora'] = call_end_time.time() if call_end_time else None
-        call_data['gruppa'] = get_description_by_name(context_calls[0].get("call_abonent_info"))
+        
         call_data['recording_id'] = context_calls[0].get("recording_id")
         members = context_calls[0].get("members")
+        
         call_data['komu_zvonil'] = members[0].get("call_abonent_info") if members else ''
+        print(f"это имя оператора: {call_data['komu_zvonil']}")
+        call_data['gruppa'] = get_group_by_operator_name(call_data['komu_zvonil'])
         call_data['tel_komu_zvonil'] = members[0].get("call_abonent_number") if members else ''
     else:
         call_data['gruppa'] = None
@@ -382,7 +388,6 @@ def test_call_history():
     date_from, date_to = prepare_actual_time_segment(4000)
     print("dates:", date_from, date_to)
     call_history_id = get_call_history_id(date_from, date_to)
-    print("id:", call_history_id)
     time.sleep(5)
     call_history_response = get_call_history_by_id(call_history_id)
     save_data_to_call_history_golang_version(call_history_response)
