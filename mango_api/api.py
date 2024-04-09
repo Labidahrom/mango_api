@@ -12,6 +12,7 @@ import logging
 from logging.handlers import RotatingFileHandler
 from mango_api import models
 import os
+import re
 import pytz
 import requests
 import time
@@ -88,13 +89,9 @@ def fetch_mango_api_data(json_data, url):
 
 
 def fetch_mango_api_record_data(id):
-    print("стартуем fetch_mango_api_record_data")
     json_data = f'{{"recording_id": "{id}", "action": "download"}}'
-    print(f"json_data:\n {json_data}")
     res = (vpbx_api_key + json_data + vpbx_api_sign).encode('UTF-8')
     sign = sha256(res).hexdigest()
-
-    
     
     payload = {
         "vpbx_api_key": vpbx_api_key,
@@ -106,7 +103,6 @@ def fetch_mango_api_record_data(id):
     }
     for i in range(5):
         response = requests.post("https://app.mango-office.ru/vpbx/queries/recording/post", headers=headers, data=payload)
-        print(response.status_code)
         if response.status_code == 200:
             return response.content
         else:
@@ -279,6 +275,11 @@ def format_seconds_to_time(seconds):
     seconds = seconds % 60
     return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
 
+
+def format_tel_kto_zvonil_number(phone_number):
+    return re.sub(r"7(\d{3})(\d{3})(\d{4})", r"(\1)\2-\3", phone_number)
+
+
 def process_call(call):    
     moscow_tz = pytz.timezone('Europe/Moscow')
     call_data = {}
@@ -308,7 +309,7 @@ def process_call(call):
 
     call_data['date_time_postupil'] = call_start_time if call_start_time else None
     call_data['dlitelnost'] = format_seconds_to_time(call.get("duration"))
-    call_data['tel_kto_zvonil'] = call.get("caller_number")
+    call_data['tel_kto_zvonil'] = format_tel_kto_zvonil_number(call.get("caller_number"))
     call_data['kuda_zvonil'] = call.get("called_number")
     number_name = models.PhoneGolangVersion.objects.filter(number=call.get("called_number")).first()
     call_data['komment_k_nomeru'] = number_name.comment if number_name else None
@@ -398,14 +399,14 @@ def save_recording_ids_to_database(recording_ids):
     recording_list = []
     for i in recording_ids:
         recording_list.extend(ast.literal_eval(i))
-    print("создали recording list")
     for record_id in recording_list:
-        call_history_instance = models.CallRecordingGolangVersion.objects.get(pk=record_id)
-        if call_history_instance:
-            continue
-        print(f"записываем айди записи: {record_id}")
-        new_recording = models.CallRecordingGolangVersion.objects.create(
-            id=record_id)
+        try:
+            call_history_instance = models.CallRecordingGolangVersion.objects.get(pk=record_id)
+            if call_history_instance:
+                continue
+        except models.CallRecordingGolangVersion.DoesNotExist:
+            new_recording = models.CallRecordingGolangVersion.objects.create(
+                id=record_id)
 
 
 def save_recordings_to_database():
@@ -422,7 +423,6 @@ def add_recordings_to_database():
     save_recording_ids_to_database(recording_ids)
     save_recordings_to_database()
 
-
             
 @shared_task
 def get_call_history_by_one_minute():
@@ -430,8 +430,8 @@ def get_call_history_by_one_minute():
     time_ago, time_now = prepare_time_seconds_gap(600)
     dates_sequence = create_dates_sequence(date.today())
     get_call_history_by_dates(dates_sequence, time_ago, time_now)
+    add_recordings_to_database()
     
-
 
 @shared_task
 def get_call_history_from_the_last_date_in_db():
@@ -463,11 +463,11 @@ def update_tables_except_call_history():
 
 @shared_task()
 def run_database_update_on_app_start():
-    add_recordings_to_database()
     save_data_to_group_golang_version()
     save_data_to_distribution_schema_golang_version()
     save_data_to_operator_golang_version()
     save_data_to_phone_golang_version()
     get_call_history_from_the_last_date_in_db()
+    add_recordings_to_database()
     
 
