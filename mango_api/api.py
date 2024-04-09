@@ -1,8 +1,10 @@
+import ast
 from celery import shared_task
 from datetime import date, datetime
 from datetime import timedelta
 from dateutil.rrule import rrule, DAILY
 from django.db import IntegrityError
+from django.utils import timezone
 from dotenv import load_dotenv
 import json
 from hashlib import sha256
@@ -80,6 +82,33 @@ def fetch_mango_api_data(json_data, url):
         response = requests.post(url, headers=headers, data=payload)
         if response.status_code == 200:
             return response.json()
+        else:
+            time.sleep(60)
+    logger.error("Try to get data 5 times, no response")
+
+
+def fetch_mango_api_record_data(id):
+    print("стартуем fetch_mango_api_record_data")
+    json_data = f'{{"recording_id": "{id}", "action": "download"}}'
+    print(f"json_data:\n {json_data}")
+    res = (vpbx_api_key + json_data + vpbx_api_sign).encode('UTF-8')
+    sign = sha256(res).hexdigest()
+
+    
+    
+    payload = {
+        "vpbx_api_key": vpbx_api_key,
+        "sign": sign,
+        "json": json_data
+    }
+    headers = {
+        "Content-Type": "application/x-www-form-urlencoded"
+    }
+    for i in range(5):
+        response = requests.post("https://app.mango-office.ru/vpbx/queries/recording/post", headers=headers, data=payload)
+        print(response.status_code)
+        if response.status_code == 200:
+            return response.content
         else:
             time.sleep(60)
     logger.error("Try to get data 5 times, no response")
@@ -239,10 +268,8 @@ def save_data_to_phone_golang_version():
 def get_group_by_operator_name(operator_name):
     try:
         group_id = models.OperatorGolangVersion.objects.get(name=operator_name).group
-        print(f"и вот это мы запишем в базу: {models.GroupGolangVersion.objects.get(id=group_id)}, оператор {operator_name}")
         return models.GroupGolangVersion.objects.get(id=group_id)
     except:
-        print(f"а с этим оператором не получилось: {operator_name}")
         return ''
     
 def format_seconds_to_time(seconds):
@@ -270,7 +297,6 @@ def process_call(call):
         members = context_calls[0].get("members")
         
         call_data['komu_zvonil'] = members[0].get("call_abonent_info") if members else ''
-        print(f"это имя оператора: {call_data['komu_zvonil']}")
         call_data['gruppa'] = get_group_by_operator_name(call_data['komu_zvonil'])
         call_data['tel_komu_zvonil'] = members[0].get("call_abonent_number") if members else ''
     else:
@@ -324,71 +350,6 @@ def save_data_to_call_history_golang_version(json_response):
     for call in calls:
         call_data = process_call(call)
         save_call_to_database(call_data)
-
-
-# def save_data_to_call_history_golang_version(json_response):
-#     if not json_response:
-#         return
-#     moscow_tz = pytz.timezone('Europe/Moscow')
-#     calls = json_response.get("data")[0].get("list")
-#     for call in calls:
-#         entry_id = call.get("entry_id")
-#         call_start_time = datetime.fromtimestamp(call.get("context_start_time"), moscow_tz)
-
-#         context_calls = call.get("context_calls")
-#         if context_calls:
-#             call_end_time  = datetime.fromtimestamp(context_calls[0].get("call_end_time"), moscow_tz)
-#             gruppa = context_calls[0].get("call_abonent_info")
-#             recording_id = context_calls[0].get("recording_id")
-#             members = context_calls[0].get("members")
-#             if members:
-#                 komu_zvonil = members[0].get("call_abonent_info")
-#                 tel_komu_zvonil = members[0].get("call_abonent_number")
-#             else:
-#                 komu_zvonil = ''
-#                 tel_komu_zvonil = ''
-#         else:
-#             call_end_time = ''
-#             gruppa = None
-#             recording_id = None
-#             komu_zvonil = ''
-#             tel_komu_zvonil = ''
-#         napravlenie = create_napravlenie_field(call)
-#         data_postupil = call_start_time.date() if call_start_time else None
-#         time_postupil = call_start_time.time() if call_start_time else None
-#         date_time_postupil = call_start_time if call_start_time else None
-#         dlitelnost = call.get("duration")
-#         tel_kto_zvonil = call.get("caller_number")
-
-#         kuda_zvonil = call.get("called_number")
-#         number_name = models.PhoneGolangVersion.objects.filter(number=call.get("called_number")).first()
-#         komment_k_nomeru = number_name.comment if number_name else None
-#         data_okonchania_razgovora = call_end_time.date() if call_end_time else None
-#         time_okonchania_razgovora = call_end_time.time() if call_end_time else None
-
-#         try:
-#             models.CallHistoryGolangVersion.objects.get_or_create(
-#                 entry_id=entry_id,
-#                 defaults={
-#                     'napravlenie': napravlenie,
-#                     'data_postupil': data_postupil,
-#                     'time_postupil': time_postupil,
-#                     'date_time_postupil': date_time_postupil,
-#                     'dlitelnost': dlitelnost,
-#                     'gruppa': gruppa,
-#                     'tel_kto_zvonil': tel_kto_zvonil,
-#                     'komu_zvonil': komu_zvonil,
-#                     'tel_komu_zvonil': tel_komu_zvonil,
-#                     'kuda_zvonil': kuda_zvonil,
-#                     'komment_k_nomeru': komment_k_nomeru,
-#                     'data_okonchania_razgovora': data_okonchania_razgovora,
-#                     'time_okonchania_razgovora': time_okonchania_razgovora,
-#                     'recording_id': recording_id
-#                 }
-#             )
-#         except IntegrityError:
-#             logger.info(f"entry_id already exsist in database")
-#             continue
             
 
 def test_call_history():
@@ -422,13 +383,54 @@ def get_call_history_by_dates(dates_sequence, start_time="00:00:00", end_time="2
         call_history_id = get_call_history_id(date_from, date_to)
         call_history_response = get_call_history_by_id(call_history_id)
         save_data_to_call_history_golang_version(call_history_response)
-        
+
+
+def get_recording_ids():
+    today = timezone.now().date()
+    yesterday = today - timedelta(days=1)
+    recording_ids = models.CallHistoryGolangVersion.objects.filter(
+    data_okonchania_razgovora__range=[yesterday, today]
+    ).values_list('recording_id', flat=True)
+    return recording_ids
+
+
+def save_recording_ids_to_database(recording_ids):
+    recording_list = []
+    for i in recording_ids:
+        recording_list.extend(ast.literal_eval(i))
+    print("создали recording list")
+    for record_id in recording_list:
+        call_history_instance = models.CallRecordingGolangVersion.objects.get(pk=record_id)
+        if call_history_instance:
+            continue
+        print(f"записываем айди записи: {record_id}")
+        new_recording = models.CallRecordingGolangVersion.objects.create(
+            id=record_id)
+
+
+def save_recordings_to_database():
+    ids_with_no_recording = list(models.CallRecordingGolangVersion.objects.filter(recording__isnull=True).values_list('id', flat=True))
+    for id in ids_with_no_recording:        
+        recording_instance = models.CallRecordingGolangVersion.objects.get(id=id)
+        audio_recording = fetch_mango_api_record_data(id)
+        recording_instance.recording = audio_recording
+        recording_instance.save()
+
+
+def add_recordings_to_database():
+    recording_ids = get_recording_ids()
+    save_recording_ids_to_database(recording_ids)
+    save_recordings_to_database()
+
+
             
 @shared_task
 def get_call_history_by_one_minute():
+    add_recordings_to_database()
     time_ago, time_now = prepare_time_seconds_gap(600)
     dates_sequence = create_dates_sequence(date.today())
     get_call_history_by_dates(dates_sequence, time_ago, time_now)
+    
 
 
 @shared_task
@@ -461,9 +463,11 @@ def update_tables_except_call_history():
 
 @shared_task()
 def run_database_update_on_app_start():
+    add_recordings_to_database()
     save_data_to_group_golang_version()
     save_data_to_distribution_schema_golang_version()
     save_data_to_operator_golang_version()
     save_data_to_phone_golang_version()
     get_call_history_from_the_last_date_in_db()
+    
 

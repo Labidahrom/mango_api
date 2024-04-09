@@ -26,12 +26,7 @@ class CallHistoryGolangVersion(models.Model):
 
 
 class CallRecordingGolangVersion(models.Model):
-    id = models.OneToOneField(
-        CallHistoryGolangVersion,
-        on_delete=models.CASCADE,
-        primary_key=True,
-        related_name='recordings'
-    )
+    id = models.CharField(max_length=50, primary_key=True)
     date = models.DateField(null=True)
     recording = models.BinaryField(null=True)
 
