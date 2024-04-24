@@ -3,7 +3,7 @@ from celery import shared_task
 from datetime import date, datetime
 from datetime import timedelta
 from dateutil.rrule import rrule, DAILY
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 from dotenv import load_dotenv
 import json
@@ -138,13 +138,18 @@ def create_napravlenie_field(json_data):
             napravlenie_data = "Входящий внешний вызов"
         else:
             napravlenie_data = "Входящий пропущенный"
-    elif context_type == 3:
+    elif context_type == 2:
         if context_status:
             napravlenie_data = "Исходящий внешний вызов"
         else:
             napravlenie_data = "Исходящий несостоявшийся"
+    elif context_type == 3:
+        if context_status:
+            napravlenie_data = "Внутренний успешный вызов"
+        else:
+            napravlenie_data = "Внутренний несостоявшийся"
     else:
-        napravlenie_data = "Исходящий внешний вызов"
+        napravlenie_data = "Неизвестный тип вызова"
 
     return napravlenie_data
 
@@ -276,7 +281,7 @@ def format_seconds_to_time(seconds):
     return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
 
 
-def format_tel_kto_zvonil_number(phone_number):
+def format_telephone_number(phone_number):
     return re.sub(r"7(\d{3})(\d{3})(\d{4})", r"(\1)\2-\3", phone_number)
 
 
@@ -289,17 +294,26 @@ def process_call(call):
     call_data['time_postupil'] = call_start_time.time() if call_start_time else None
 
     context_calls = call.get("context_calls")
+    context_type = call.get("context_type")
+    
     if context_calls:
+        members = context_calls[0].get("members")
+        if context_type == 2:
+            call_data['komu_zvonil'] = call.get("caller_name")
+            call_data['tel_komu_zvonil'] = format_telephone_number(call.get('called_number'))
+            call_data['gruppa'] = get_group_by_operator_name(call_data['komu_zvonil'])
+        else:
+            call_data['komu_zvonil'] = members[0].get("call_abonent_info") if members else ''
+            call_data['tel_komu_zvonil'] = members[0].get("call_abonent_number") if members else ''
+            call_data['gruppa'] = get_group_by_operator_name(call_data['komu_zvonil'])
         call_end_time  = datetime.fromtimestamp(context_calls[0].get("call_end_time"), moscow_tz)
         call_data['data_okonchania_razgovora'] = call_end_time.date() if call_end_time else None
         call_data['time_okonchania_razgovora'] = call_end_time.time() if call_end_time else None
         
         call_data['recording_id'] = context_calls[0].get("recording_id")
-        members = context_calls[0].get("members")
         
-        call_data['komu_zvonil'] = members[0].get("call_abonent_info") if members else ''
+        
         call_data['gruppa'] = get_group_by_operator_name(call_data['komu_zvonil'])
-        call_data['tel_komu_zvonil'] = members[0].get("call_abonent_number") if members else ''
     else:
         call_data['gruppa'] = None
         call_data['recording_id'] = None
@@ -309,7 +323,7 @@ def process_call(call):
 
     call_data['date_time_postupil'] = call_start_time if call_start_time else None
     call_data['dlitelnost'] = format_seconds_to_time(call.get("duration"))
-    call_data['tel_kto_zvonil'] = format_tel_kto_zvonil_number(call.get("caller_number"))
+    call_data['tel_kto_zvonil'] = format_telephone_number(call.get("caller_number"))
     call_data['kuda_zvonil'] = call.get("called_number")
     number_name = models.PhoneGolangVersion.objects.filter(number=call.get("called_number")).first()
     call_data['komment_k_nomeru'] = number_name.comment if number_name else None
@@ -344,6 +358,7 @@ def save_call_to_database(call_data):
             logger.info(f"{e}")
 
 
+@transaction.atomic
 def save_data_to_call_history_golang_version(json_response):
     if not json_response:
         return
@@ -352,14 +367,6 @@ def save_data_to_call_history_golang_version(json_response):
         call_data = process_call(call)
         save_call_to_database(call_data)
             
-
-def test_call_history():
-    date_from, date_to = prepare_actual_time_segment(4000)
-    print("dates:", date_from, date_to)
-    call_history_id = get_call_history_id(date_from, date_to)
-    time.sleep(5)
-    call_history_response = get_call_history_by_id(call_history_id)
-    save_data_to_call_history_golang_version(call_history_response)
 
 
 def create_dates_sequence(start_date):
@@ -399,14 +406,13 @@ def save_recording_ids_to_database(recording_ids):
     recording_list = []
     for i in recording_ids:
         recording_list.extend(ast.literal_eval(i))
-    for record_id in recording_list:
-        try:
-            call_history_instance = models.CallRecordingGolangVersion.objects.get(pk=record_id)
-            if call_history_instance:
+    with transaction.atomic():
+        for record_id in recording_list:
+            if len(record_id) > 50:
+                print(f"record_id: {record_id}")
+            recording, created = models.CallRecordingGolangVersion.objects.get_or_create(id=record_id)
+            if not created:
                 continue
-        except models.CallRecordingGolangVersion.DoesNotExist:
-            new_recording = models.CallRecordingGolangVersion.objects.create(
-                id=record_id)
 
 
 def save_recordings_to_database():
@@ -414,6 +420,7 @@ def save_recordings_to_database():
     for id in ids_with_no_recording:        
         recording_instance = models.CallRecordingGolangVersion.objects.get(id=id)
         audio_recording = fetch_mango_api_record_data(id)
+        recording_instance.date = timezone.now().date()
         recording_instance.recording = audio_recording
         recording_instance.save()
 

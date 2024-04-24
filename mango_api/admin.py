@@ -13,7 +13,7 @@ class OperatorGolangVersionAdmin(admin.ModelAdmin):
 
 
 class CallHistoryGolangVersionAdmin(admin.ModelAdmin):
-    list_display = ('entry_id', 'napravlenie', 'date_time_postupil', 'napravlenie')
+    list_display = ('entry_id', 'napravlenie', 'date_time_postupil', 'data_postupil', 'napravlenie')
 
 
 admin.site.register(models.CallHistoryGolangVersion, CallHistoryGolangVersionAdmin)

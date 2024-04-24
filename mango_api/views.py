@@ -8,8 +8,7 @@ from mango_api.api import (
     save_data_to_group_golang_version,
     save_data_to_distribution_schema_golang_version,
     save_data_to_operator_golang_version,
-    save_data_to_phone_golang_version,
-    test_call_history
+    save_data_to_phone_golang_version
     )
 
 from django.shortcuts import render
