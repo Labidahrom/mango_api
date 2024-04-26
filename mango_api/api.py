@@ -305,6 +305,8 @@ def process_call(call):
         else:
             call_data['komu_zvonil'] = members[0].get("call_abonent_info") if members else ''
             call_data['tel_komu_zvonil'] = members[0].get("call_abonent_number") if members else ''
+            if call_data['tel_komu_zvonil'] == '':
+                call_data['tel_komu_zvonil'] = context_calls[0].get("call_abonent_info")
             call_data['gruppa'] = get_group_by_operator_name(call_data['komu_zvonil'])
         call_end_time  = datetime.fromtimestamp(context_calls[0].get("call_end_time"), moscow_tz)
         call_data['data_okonchania_razgovora'] = call_end_time.date() if call_end_time else None
