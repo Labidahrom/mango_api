@@ -40,7 +40,7 @@ def create_napravlenie_field(json_data):
 
 
 def get_call_history_id(date):
-    json_data = f'{{"start_date":"{date} 17:00:00", "end_date":"{date} 22:59:59", "limit":"5000", "offset":"0"}}'
+    json_data = f'{{"start_date":"{date} 18:22:00", "end_date":"{date} 22:59:59", "limit":"5000", "offset":"0"}}'
 
     res = (vpbx_api_key + json_data + vpbx_api_sign).encode('UTF-8')
     sign = sha256(res).hexdigest()
@@ -115,7 +115,7 @@ def parse_json(response):
 
 
 
-date = "25.04.2024"
+date = "30.04.2024"
 id = get_call_history_id(date)
 time.sleep(20)
 response_json = get_call_history(id)

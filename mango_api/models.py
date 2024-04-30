@@ -26,7 +26,7 @@ class CallHistoryGolangVersion(models.Model):
 
 
 class CallRecordingGolangVersion(models.Model):
-    id = models.CharField(max_length=50, primary_key=True)
+    mango_id = models.CharField(max_length=50, unique=True)
     date = models.DateField(null=True)
     recording = models.BinaryField(null=True)
 
@@ -35,7 +35,7 @@ class CallRecordingGolangVersion(models.Model):
         db_table = 'call_recording_golang_version'
 
     def __str__(self):
-        return self.id
+        return self.mango_id
 
 
 class GroupGolangVersion(models.Model):

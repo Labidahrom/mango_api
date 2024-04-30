@@ -301,13 +301,15 @@ def process_call(call):
         if context_type == 2:
             call_data['komu_zvonil'] = call.get("caller_name")
             call_data['tel_komu_zvonil'] = format_telephone_number(call.get('called_number'))
-            call_data['gruppa'] = get_group_by_operator_name(call_data['komu_zvonil'])
         else:
             call_data['komu_zvonil'] = members[0].get("call_abonent_info") if members else ''
             call_data['tel_komu_zvonil'] = members[0].get("call_abonent_number") if members else ''
             if call_data['tel_komu_zvonil'] == '':
                 call_data['tel_komu_zvonil'] = context_calls[0].get("call_abonent_info")
-            call_data['gruppa'] = get_group_by_operator_name(call_data['komu_zvonil'])
+        call_data['gruppa'] = get_group_by_operator_name(call_data['komu_zvonil'])
+        if not call_data['gruppa'] and call_data['komu_zvonil']:
+            call_data['gruppa'] = context_calls[0].get("call_abonent_info")
+            
         call_end_time  = datetime.fromtimestamp(context_calls[0].get("call_end_time"), moscow_tz)
         call_data['data_okonchania_razgovora'] = call_end_time.date() if call_end_time else None
         call_data['time_okonchania_razgovora'] = call_end_time.time() if call_end_time else None
@@ -315,7 +317,7 @@ def process_call(call):
         call_data['recording_id'] = context_calls[0].get("recording_id")
         
         
-        call_data['gruppa'] = get_group_by_operator_name(call_data['komu_zvonil'])
+
     else:
         call_data['gruppa'] = None
         call_data['recording_id'] = None
@@ -410,17 +412,15 @@ def save_recording_ids_to_database(recording_ids):
         recording_list.extend(ast.literal_eval(i))
     with transaction.atomic():
         for record_id in recording_list:
-            if len(record_id) > 50:
-                print(f"record_id: {record_id}")
-            recording, created = models.CallRecordingGolangVersion.objects.get_or_create(id=record_id)
+            recording, created = models.CallRecordingGolangVersion.objects.get_or_create(mango_id=record_id)
             if not created:
                 continue
 
 
 def save_recordings_to_database():
-    ids_with_no_recording = list(models.CallRecordingGolangVersion.objects.filter(recording__isnull=True).values_list('id', flat=True))
+    ids_with_no_recording = list(models.CallRecordingGolangVersion.objects.filter(recording__isnull=True).values_list('mango_id', flat=True))
     for id in ids_with_no_recording:        
-        recording_instance = models.CallRecordingGolangVersion.objects.get(id=id)
+        recording_instance = models.CallRecordingGolangVersion.objects.get(mango_id=id)
         audio_recording = fetch_mango_api_record_data(id)
         recording_instance.date = timezone.now().date()
         recording_instance.recording = audio_recording
