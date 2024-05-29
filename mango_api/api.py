@@ -160,15 +160,22 @@ def get_call_history_by_id(id):
         response = fetch_mango_api_data(json_data,
                                         "https://app.mango-office.ru/vpbx/stats/calls/result/")
         try:
-            if response and response.get("data"):
+            if response and response.get("data") != []:
+                
                 calls = response.get("data")[0].get("list")
                 if calls:
                     return response
+            elif response.get('status') == 'complete' and response.get("data") == []:
+                return
+            elif response.get('status') == 'work' and response.get("data") == []:
+                return
             else:
+                print(f"нет ответа сервера по истории звонков: {response}")
                 time.sleep(60)
                 continue
 
         except (IndexError, TypeError) as e:
+            print("get_call_history_by_id - здесь произошла ошибка")
             time.sleep(60)
             continue
 
@@ -289,9 +296,15 @@ def process_call(call):
     moscow_tz = pytz.timezone('Europe/Moscow')
     call_data = {}
     call_data['entry_id'] = call.get("entry_id")
+
+
+
     call_start_time = datetime.fromtimestamp(call.get("context_start_time"), moscow_tz)
     call_data['data_postupil'] = call_start_time.date() if call_start_time else None
     call_data['time_postupil'] = call_start_time.time() if call_start_time else None
+    # print(f"это идет в типа в москвоское время разговора в базе {call_data['time_postupil']}")
+    call_data['date_time_postupil'] = call_start_time if call_start_time else None
+    # print(f"это идет в типа в бывшее ютс время разговора {call_data['date_time_postupil']}")
 
     context_calls = call.get("context_calls")
     context_type = call.get("context_type")
@@ -325,7 +338,6 @@ def process_call(call):
         call_data['tel_komu_zvonil'] = ''
     call_data['napravlenie'] = create_napravlenie_field(call)
 
-    call_data['date_time_postupil'] = call_start_time if call_start_time else None
     call_data['dlitelnost'] = format_seconds_to_time(call.get("duration"))
     call_data['tel_kto_zvonil'] = format_telephone_number(call.get("caller_number"))
     call_data['kuda_zvonil'] = call.get("called_number")
@@ -337,7 +349,7 @@ def process_call(call):
 def save_call_to_database(call_data):
     if call_data:
         try:
-            models.CallHistoryGolangVersion.objects.get_or_create(
+            obj, created = models.CallHistoryGolangVersion.objects.get_or_create(
                 entry_id=call_data.get('entry_id'),
                 defaults={
                     'napravlenie': call_data.get('napravlenie'),
@@ -362,14 +374,17 @@ def save_call_to_database(call_data):
             logger.info(f"{e}")
 
 
-@transaction.atomic
+
 def save_data_to_call_history_golang_version(json_response):
     if not json_response:
         return
-    calls = json_response.get("data")[0].get("list")
-    for call in calls:
-        call_data = process_call(call)
-        save_call_to_database(call_data)
+    json_calls = json_response.get("data")[0].get("list")
+    unsorted_calls = []
+    for call in json_calls:
+        unsorted_calls.append(process_call(call))
+    sorted_calls = sorted(unsorted_calls, key=lambda x: x.get("date_time_postupil"))
+    for call in sorted_calls:
+        save_call_to_database(call)
             
 
 
@@ -434,9 +449,9 @@ def add_recordings_to_database():
 
             
 @shared_task
-def get_call_history_by_one_minute():
-    add_recordings_to_database()
-    time_ago, time_now = prepare_time_seconds_gap(600)
+def get_call_history_by_gap(gap=14400):
+    print("качаем звонки за последние 4 часа")
+    time_ago, time_now = prepare_time_seconds_gap(gap)
     dates_sequence = create_dates_sequence(date.today())
     get_call_history_by_dates(dates_sequence, time_ago, time_now)
     add_recordings_to_database()
@@ -452,6 +467,12 @@ def get_call_history_from_the_last_date_in_db():
 @shared_task
 def get_call_history_from_the_last_week():
     start_date = datetime.now() - timedelta(days=7)
+    dates_sequence = create_dates_sequence(start_date.date())
+    get_call_history_by_dates(dates_sequence)
+
+@shared_task
+def get_call_history_from_the_date_now():
+    start_date = datetime.now()
     dates_sequence = create_dates_sequence(start_date.date())
     get_call_history_by_dates(dates_sequence)
 
@@ -480,3 +501,39 @@ def run_database_update_on_app_start():
     add_recordings_to_database()
     
 
+@shared_task()
+def get_call_history_from_last_entry():
+    last_entry = models.CallHistoryGolangVersion.objects.order_by('-date_time_postupil').first()
+
+    if last_entry and last_entry.date_time_postupil:
+        last_entry_date_time = last_entry.date_time_postupil
+    else:
+        last_entry_date_time = None
+
+    if last_entry_date_time:
+        moscow_tz = pytz.timezone('Europe/Moscow')
+        last_entry_date_time = last_entry_date_time.astimezone(moscow_tz)
+        now_date_time = timezone.now().astimezone(moscow_tz)
+
+
+        time_gap = now_date_time - last_entry_date_time
+        time_gap_hours = time_gap.total_seconds() / 3600
+        if time_gap_hours > 24:
+            update_tables_except_call_history()
+            get_call_history_from_the_last_date_in_db()
+        else:
+            date_from = {
+                "time": last_entry_date_time.strftime('%H:%M:%S'),
+                "date": last_entry_date_time.strftime('%d.%m.%Y')
+            }
+            date_to = {
+                "time": now_date_time.strftime('%H:%M:%S'),
+                "date": now_date_time.strftime('%d.%m.%Y')
+            }
+            call_history_id = get_call_history_id(date_from, date_to)
+            call_history_response = get_call_history_by_id(call_history_id)
+            save_data_to_call_history_golang_version(call_history_response)
+            add_recordings_to_database()
+    elif not last_entry_date_time:
+        update_tables_except_call_history()
+        get_call_history_by_gap(500)

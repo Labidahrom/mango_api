@@ -1,5 +1,6 @@
 import os
 from celery import Celery
+from celery.schedules import crontab
 from datetime import timedelta
 
 # Set the default Django settings module for the 'celery' program.
@@ -30,14 +31,17 @@ app.conf.ONCE = {
     }
 }
 
-# Schedule the task, ensuring to reference the task correctly if it's intended to be periodic
 app.conf.beat_schedule = {
     'update-call-history': {
-        'task': 'mango_api.api.get_call_history_by_one_minute',
-        'schedule': timedelta(seconds=40),
+        'task': 'mango_api.api.get_call_history_from_last_entry',
+        'schedule': timedelta(seconds=60),
     },
-        'update-other-tables': {
+    'update-other-tables': {
         'task': 'mango_api.api.update_tables_except_call_history',
         'schedule': timedelta(seconds=600),
+    },
+    'daily-database-check-for-missing-calls-for-4-hours': {
+        'task': 'mango_api.api.get_call_history_by_gap',
+        'schedule': timedelta(seconds=14400),
     },
 }
